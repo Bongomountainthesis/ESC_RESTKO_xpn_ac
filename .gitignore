@@ -1,0 +1,10 @@
+*/results/*
+*/data/*
+*.csv
+*.ppt
+*.txt
+*.ps
+*~
+*.RData
+*.eps
+

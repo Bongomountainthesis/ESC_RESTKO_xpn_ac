@@ -1,0 +1,142 @@
+
+
+options(stringsAsFactors = FALSE)
+
+qw <- function(...) {
+  as.character(sys.call()[-1])
+}
+
+re1 <- read.csv(file = "data/RE1_0-86_mm9.bed",sep = "\t",header = F)
+
+#remove lines with NAs in - how has this happened?
+
+re1[seq(2,length(re1[,1]),2),1] <- re1[seq(1,length(re1[,1]),2),1]
+
+re1 <- re1[which(!(is.na(re1[,2]))),]
+
+colnames(re1) <- c("Chr","Start","End","Score")
+
+re1[,"Name"] <- paste(paste(re1[,"Chr"],re1[,"Start"],sep=":"),re1[,"End"], sep="-")
+
+library(IRanges)
+
+rd <- RangedData(ranges = IRanges(
+                   start= re1$Start,
+                   end = re1$End,
+                   names = as.character(re1$Name),
+                   ),
+                 space = as.character(re1$Chr),
+                 values = re1$Score
+                 )
+
+library(biomaRt)
+library(ChIPpeakAnno)
+
+ensmart <- useMart("ensembl", dataset="mmusculus_gene_ensembl")
+
+#remove "chr" prefix for  ChIPpeakAnno
+names(rd)<-gsub("chr","",names(rd))
+
+#change "M" to "MT" for ChIPpeakAnno
+id<-which(names(rd)=="M")
+if (length(id)>0){
+   names(rd)[id]<-"MT"
+}
+
+#tss <- getAnnotation(ensmart, "TSS")
+#save(tss, file="data/tss.RData")
+tss <- get(load(file="data/tss.RData"))
+
+#chippeakanno loses peak values - merge them back on later
+rd.df <- as.data.frame(rd)
+vals <- rd.df[,c("names","values")]
+colnames(vals) <- c("Names","Score")
+
+#find peaks that are near to genes, measure distance to TSS (feature start on +ve and end on -ve strands), return all near peaks and overlapping - hope that it does the strand right....this will need testing.
+
+peak_to_gene <- annotatePeakInBatch(rd,
+                                    AnnotationData=tss,
+                                   PeakLocForDistance = "middle",    # from the middle of the peak
+                                    FeatureLocForDistance = "TSS",  # to the TSS of the gene
+                                    output = "both",
+                                    multiple=TRUE
+                                    )
+
+save(peak_to_gene, file = "results/peak_to_gene_0.96.RData")
+#peak_to_gene <- get(load("results/peak_to_gene.RData"))
+
+#convert to dataframes
+
+peak_to_gene.df <- as.data.frame(peak_to_gene)
+
+#annotate genes from ensembl IDs using BiomaRt
+
+filters <- c("ensembl_gene_id")
+values<-unique(peak_to_gene.df[,"feature"])
+attributes <- c("ensembl_gene_id","mgi_symbol", "description")
+
+annot <- getBM(filters=filters, values=values, attributes=attributes, mart=ensmart)
+
+
+#ditch any that don't have a symbol or a description
+no.anno <- intersect(
+                     which(annot[,"mgi_symbol"]==""),
+                     which(annot[,"description"]==""))
+annot <- annot[-1*no.anno,]
+
+
+# a few have multiple bits of annotation
+annot<-cbind(annot, alt.annot="")
+dups<-annot[duplicated(annot[,"ensembl_gene_id"]), "ensembl_gene_id"]
+
+#keep the first one and add all the others as alt.annot 
+for (d in dups){
+  inds <- which(annot[,"ensembl_gene_id"]==d)
+  this.alt.annot <- annot[inds[-1], c("mgi_symbol", "description")]
+  annot[inds[1],"alt.annot"] <- paste(paste(this.alt.annot[,1], this.alt.annot[,2]), collapse="; ")
+}
+annot <- annot[!duplicated( annot[,"ensembl_gene_id"] ), ]
+rownames(annot) <- annot[,"ensembl_gene_id"]
+
+#merge peaks back to genes by Ensembl IDs
+
+merged.res <- merge(peak_to_gene.df, annot, by.x = "feature", by.y = "ensembl_gene_id")
+
+#merge back to peak values by peak name
+
+merged2.res <- merge(merged.res,vals, by.x = "peak", by.y = "Names")
+
+#rearrange, save and test
+res <- merged2.res[,qw(peak,space,start,end,width,Score,feature,strand,start_position,end_position,insideFeature,distancetoFeature,shortestDistance,fromOverlappingOrNearest,mgi_symbol,description)]
+colnames(res) <- qw(Peak,Chromosome,Peak_start,Peak_end,Peak_width,Score,EnsemblID,Gene_strand,Gene_start,Gene_end,insideFeature,distancetoFeature,shortestDistance,fromOverlappingOrNearest,Symbol,Description)
+
+#res <- res[order(res[,"neg10log10pVal"],decreasing=TRUE),]
+#write.csv(res, file = paste(dirname(filename),"/nearest_or_overlapping_peak_to_gene.csv",sep=""))
+
+#find nearest peak to each gene - take nearest peak only
+
+res.o <- res[order(abs(res[,"distancetoFeature"]),decreasing=FALSE),]
+
+res.od <- res.o[which(!duplicated(res.o[,"EnsemblID"])),]
+
+write.csv(res.od, file = "RE1_to_nearest_peak_to_gene_TSS_0.96.csv")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

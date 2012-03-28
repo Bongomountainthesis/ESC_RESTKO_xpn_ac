@@ -1,0 +1,367 @@
+
+options(stringsAsFactors=FALSE)
+
+d0 <- read.csv(file = "results/REST_D0_nearest_peak_to_gene_TSS.csv")
+
+d4 <- read.csv(file = "results/REST_D4_nearest_peak_to_gene_TSS.csv")
+
+##filter on distance within 10kb of tss
+
+d0 <- d0[which(abs(d0[,"distancetoFeature"]) <= 10000),]
+d4 <- d4[which(abs(d4[,"distancetoFeature"]) <= 10000),]
+
+#filter on neg10log10pval
+
+d0 <- d0[which(d0[,"neg10log10pVal"] >= 80),]
+d4 <- d4[which(d4[,"neg10log10pVal"] >= 80),]
+
+d0.ids <- d0[,"EnsemblID"]
+
+d4.ids <- d4[,"EnsemblID"]
+
+shared <- intersect(d0.ids, d4.ids)
+
+d0_unique <- d0.ids[which(!(d0.ids %in% d4.ids))]
+
+d4_unique <- d4.ids[which(!(d4.ids %in% d0.ids))]
+
+write.csv(shared, file = "results/shared_IDs.csv")
+write.csv(d0_unique, file = "results/D0_unique_IDs.csv")
+write.csv(d4_unique, file = "results/D4_unique_IDs.csv")
+
+## are the 36 unique REST binding events at D4 only small crap peaks?
+#draw a boxplot of neg10log10pvals for each set
+
+d0_peaks <- d0[which(d0[,"EnsemblID"] %in% d0_unique),"neg10log10pVal"]
+d0_shared_peaks <- d0[which(d0[,"EnsemblID"] %in% shared),"neg10log10pVal"]
+d4_shared_peaks <- d4[which(d4[,"EnsemblID"] %in% shared),"neg10log10pVal"]
+d4_peaks <- d4[which(d4[,"EnsemblID"] %in% d4_unique),"neg10log10pVal"]
+
+names <- c("Day0 Unique","Day0 Shared","Day4 Shared", "Day4 Unique")
+
+postscript(file = "results/peak_sizes_shared_unique.ps",horizontal = FALSE)
+boxplot(d0_peaks,d0_shared_peaks,d4_shared_peaks,d4_peaks,
+	outline = FALSE,
+	xaxt = "n",
+	ylab = "-10log10PValue"
+	)
+axis(1, at=1:4, labels = names)
+dev.off()
+
+
+## are these a subset of NSC or astrocyte REST binding sites?
+
+ns5 <- read.csv(file = "results/ns5_nearest_peak_to_gene_TSS.csv")
+astro <- read.csv(file = "results/astro_nearest_peak_to_gene_TSS.csv")
+
+ns5 <- ns5[which(abs(ns5[,"distancetoFeature"]) <= 10000),]
+astro <- astro[which(abs(astro[,"distancetoFeature"]) <= 10000),]
+
+ns5 <- ns5[which(ns5[,"neg10log10pVal"] >= 80),]
+astro <- astro[which(astro[,"neg10log10pVal"] >= 80),]
+
+ns5.ids <- ns5[,"EnsemblID"]
+astro.ids <- astro[,"EnsemblID"]
+
+#vs D0 unique
+ns5_vs_d0 <- intersect(d0_unique, ns5.ids)
+astro_vs_d0 <- intersect(d0_unique, astro.ids)
+
+#vs D4 unique
+ns5_vs_d4 <- intersect(d4_unique, ns5.ids)
+astro_vs_d4 <- intersect(d4_unique, astro.ids)
+
+#vs shared
+ns5_vs_shared <- intersect(shared, ns5.ids)
+astro_vs_shared <- intersect(shared, astro.ids)
+
+## overlap with putative RE1 sites to make some sort of heatmap thing?!
+
+re10.91 <- read.csv(file = "results/RE1_to_nearest_peak_to_gene_TSS_0.96.csv")
+
+re10.86 <- read.csv(file = "results/RE1_to_nearest_peak_to_gene_TSS_0.86.csv")
+
+######## make a matrix of all peaks and then give 0 or 1 if it is each sample.
+
+#concatenate all the id lists
+
+rest.ids <- c(d0.ids,d4.ids,ns5.ids,astro.ids)
+
+##### not as much overlap between RE1db and ChIPSeq as might be expected - are the bigger REST peaks more likely to have an RE1?
+
+#make a dataframe of all REST ChIPSeq events plus neg10log10pval, order and remove duplicates then merge with RE1 score and plot
+
+d0_en_peak <- d0[,c("EnsemblID","neg10log10pVal")]
+d4_en_peak <- d4[,c("EnsemblID","neg10log10pVal")]
+
+ns5_en_peak <- ns5[,c("EnsemblID","neg10log10pVal")]
+astro_en_peak <- astro[,c("EnsemblID","neg10log10pVal")]
+
+#concatenate together, remove dups
+
+all_en_peak <- rbind(d0_en_peak,d4_en_peak,ns5_en_peak,astro_en_peak)
+
+all_en_peak <- all_en_peak[order(all_en_peak[,"neg10log10pVal"],decreasing = TRUE),]
+all_en_peak <- all_en_peak[!duplicated(all_en_peak[,"EnsemblID"]),]
+
+#merge with RE1 score
+
+re1_score <- re10.86[,c("EnsemblID","Score")]
+
+peak_re1 <- merge(all_en_peak,re1_score, by.x = "EnsemblID", by.y = "EnsemblID", all.x = TRUE)
+
+peak_re1 <- peak_re1[order(peak_re1[,"neg10log10pVal"],decreasing = TRUE),]
+
+#remove those that don't have an RE1 site
+
+peak_re1 <- peak_re1[which(!(is.na(peak_re1[,"Score"]))),]
+
+#########so out of 694 peaks that are variably in ESCs, NSCs and/or astros, 542 have a RE1 site (at 0.86)
+#bin into ten peaks and count number that have RE1 site, to plot as histogram
+
+#make divisible by number of bins (27 bins of 20)
+score <- peak_re1[1:600,"Score"] 
+
+hist_data <- colMeans(matrix(score, nrow = 20))
+
+postscript(file = "results/correlation_between_rest_peak_size_and_re1_score.eps",horizontal = FALSE)
+plot(hist_data, type = "l",col = "gray49", lwd = 2)
+lines(loess.smooth(1:30,hist_data),col = "firebrick1", lwd = 4)
+dev.off()
+
+#smooth.scatter(hist_data, type = "l", col = "red")
+
+##########see if there is an overenrichment for particular GO terms in each part of the curve - doubt it, but would be tidy...
+
+#split graph rows by 244ish
+
+top_ids_go <- peak_re1[1:244,"EnsemblID"]
+middle_ids_go <- peak_re1[246:489,"EnsemblID"]
+bottom_ids_go <- peak_re1[491:length(peak_re1[,1]),"EnsemblID"]
+
+GO_rest_vs_re1 <- cbind(top_ids_go,middle_ids_go,bottom_ids_go)
+
+write.csv(GO_rest_vs_re1,file = "results/GOterms_of_REST_vs_RE1_graph_split.csv")
+
+
+#remove duplicates and use as seed - can use putative RE1 list if get from Rory
+
+rest.ids <- rest.ids[!duplicated(rest.ids)]
+
+rest.matrix <- cbind(
+                      ESC_D0 = as.numeric(rest.ids %in% d0.ids),
+                      ESC_D4 = as.numeric(rest.ids %in% d4.ids),
+                      NS5    = as.numeric(rest.ids %in% ns5.ids),
+                      Astro  = as.numeric(rest.ids %in% astro.ids)
+
+)
+
+rownames(rest.matrix) <- rest.ids
+
+##order rest.matrix first, then draw image matrix
+
+distance <- dist(rest.matrix)
+cluster <- hclust(distance, method = "ward")
+dendrogram <- as.dendrogram(cluster)
+
+dendro_order <- rev(order.dendrogram(dendrogram))
+
+rest.matrix.dendro <- rest.matrix[dendro_order,]
+
+library(graphics)
+
+postscript(file = "results/comparison_between_REST_sites_new.eps", horizontal = FALSE)
+image(rest.matrix.dendro, col = c("azure","cornflowerblue"))
+dev.off() 
+
+##want a colsidebar to show if has a RE1 site - draw another image with RE1 sites in the same order?
+
+re1_ids <- re10.86[,"EnsemblID"]
+
+rest_ids_dendro <- rownames(rest.matrix.dendro)
+
+rest_re1 <- ifelse(rest_ids_dendro %in% re1_ids, 1, 0)
+
+postscript(file = "results/dendrogram_re1_site_sidebar.eps",horizontal = FALSE)
+image(as.matrix(rest_re1), col = c("white","red"))
+dev.off()
+
+#cut sidebar down to size in gimp...
+
+## take chunks for GO terms
+
+left_ids <- rownames(rest.matrix.dendro[516:777,])
+middleL_ids <- rownames(rest.matrix.dendro[354:515,])
+middleR_ids    <- rownames(rest.matrix.dendro[92:161,])
+right_ids   <- rownames(rest.matrix.dendro[1:91,])
+
+write.csv(left_ids, file = "results/REST_comparisons_left_ids.csv")
+write.csv(middleL_ids, file = "results/REST_comparisons_middleL_ids.csv")
+write.csv(middleR_ids, file = "results/REST_comparisons_middleR_ids.csv")
+write.csv(right_ids, file = "results/REST_comparisons_right_ids.csv")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##and tidy up in gimp...this seems to work quite well see documents/results/REST ESC/overlap of REST binding.xcf
+
+##also try clustering into GO terms
+
+library(biomaRt)
+
+ensmart<- useMart("ensembl",dataset="mmusculus_gene_ensembl")
+results<- getBM(filters="ensembl_gene_id", values=rest.ids, attributes=c("ensembl_gene_id","go_id", "namespace_1003","name_1006"), mart=ensmart)
+
+results_bp <- results[which(results[,"namespace_1003"] == "biological_process"),]
+
+library(DAVIDQuery)
+
+##take EnsemblIDs and chop up into one character
+
+##for testing
+rest.ids.test <- rest.ids[1:100]
+
+rest.ids.char <- paste(rest.ids.test, sep ="", collapse = ", ")
+
+david <- DAVIDQueryLoop(idList = rest.ids.char, 
+			idLimit = 200,
+			sleepSeconds = 10,
+			hitsPerDayLimit = 200,
+			verbose = FALSE,
+			testMe = FALSE,
+			type = "ENSEMBL_GENE_ID", 
+			annot = "GOTERM_BP_5", 
+			tool = "annotationReport")
+
+david <- DAVIDQuery(ids = rest.ids.char, 
+			type = "ENSEMBL_GENE_ID", 
+			annot = "GOTERM_BP_5", 
+			tool = "annotationReport")
+
+
+david.results <- david$DAVIDQueryResult
+
+##remove all words from $GOTERM_BP_5
+
+test <- david.results[2:length(david.results[,"ID"]),c("ID","GOTERM_BP_5")]
+
+# take GO column from list and split up
+
+test.split <- strsplit(test[[2]], ",")
+
+#remove lines that have split wrong due to commas in descriptions and remove descriptions
+
+for(i in 1:length(test.split)){
+		test.split[[i]] <- grep("^GO.*",test.split[[i]], value = TRUE)
+		test.split[[i]] <- gsub("~.*$","",test.split[[i]])
+		}
+
+#stick GO terms in list back to ensembl IDS
+
+names(test.split) <- test[[1]]
+
+##should now be able to query contents of list, return EnsemblID and then pass that to whatever to plot stuff
+
+GO.ids <- "GO:0032774"
+
+names(test.split)[sapply(test.split, function(x){GO.ids %in% x})]
+
+
+
+
+
+library(gplots)
+library(RColorBrewer)
+
+postscript(file = "results/rest_comparison_heatmap.eps", horizontal = FALSE)
+heatmap.2(rest.matrix, 
+	scale = "row",
+	Colv = NA,
+	labRow = NA,
+	density.info = "none",
+	trace = "none",
+	col = cm.colors(2),
+	)
+dev.off()
+
+
+atrix(hist_exp[,2:5]), 
+			Colv = NA, 
+			labRow = NA,
+			scale = "row",
+			density.info = "none",
+			trace = "none", 
+			RowSideColors = exp.bar.scale_N,
+			ColSideColors = colside, 
+			cexRow = 0.75,
+			labCol = symbol,
+			col = brewer.pal(3, "Blues")
+			
+			)
+
+
+
+
+
+
+
+#rest.df[,1] <- rest.ids
+#colnames(rest.df) <- c("EnsemblID", "ESC_D0", "ESC_D4", "NS5", "Astro")
+#rest.df[,"ESC_D0"] <- as.numeric(rest.df[,"EnsemblID"] %in% d0.ids)
+#rest.df[,"ESC_D4"] <- as.numeric(rest.df[,"EnsemblID"] %in% d4.ids)
+#rest.df[,"NS5"]    <- as.numeric(rest.df[,"EnsemblID"] %in% ns5.ids)
+#rest.df[,"Astro"]  <- as.numeric(rest.df[,"EnsemblID"] %in% astro.ids)
+
+
+#rest.matrix[,2] <- ifelse((rest.matrix[,"EnsemblID"] %in% d0.ids),as.numeric(1),as.numeric(0))
+#rest.matrix[,3] <- ifelse((rest.matrix[,"EnsemblID"] %in% d4.ids),as.numeric(1),as.numeric(0))
+#rest.matrix[,4] <- ifelse((rest.matrix[,"EnsemblID"] %in% ns5.ids),as.numeric(1),as.numeric(0))
+#rest.matrix[,5] <- ifelse((rest.matrix[,"EnsemblID"] %in% astro.ids),as.numeric(1),as.numeric(0))
+
+
+##functions to attempt to do the same thing - dont bloody work...
+#rest_ifelse <- function(x){ifelse(which(x %in% rest.matrix[,1]), 
+#			rest.matrix[,2] <- 1,
+#			rest.matrix[,2] <- 0)
+#			}
+
+#rest_ifelse <- function(x){if(rest.matrix[,"EnsemblID"] %in% x){res <- 1}else{res <- 0}
+#			rest.matrix[,"ESC_D0"] <- return(res)
+#					}
+			
+#rest_ifelse(d0.ids)
+
+## turn into numerical data matrix and make heatmap
+
+#rest.matrix <- as.data.frame(data.matrix(rest.matrix[,2:5]))
+#
+#heatmap(rest.matrix, Colv = NA)
+
+
+
+
