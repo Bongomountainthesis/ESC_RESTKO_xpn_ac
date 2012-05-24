@@ -1,4 +1,4 @@
-stringsAsFactors=FALSE
+options(stringsAsFactors=FALSE)
 
 rest_h3k9ac <- read.csv("rest_h3k9ac_nearest_peak_to_gene_TSS.csv")
 rest_h4ac <- read.csv("rest_h4ac_nearest_peak_to_gene_TSS.csv")
@@ -9,32 +9,56 @@ ctrl_h4ac <- read.csv("ctrl_h4ac_nearest_peak_to_gene_TSS.csv")
 
 ctrl_h3k9ac <- ctrl_h3k9ac[which(ctrl_h3k9ac[,"neg10log10pVal"]>=100),]
 rest_h3k9ac <- rest_h3k9ac[which(rest_h3k9ac[,"neg10log10pVal"]>=100),]
+ctrl_h4ac <- ctrl_h4ac[which(ctrl_h4ac[,"neg10log10pVal"]>=100),]
+rest_h4ac <- rest_h4ac[which(rest_h4ac[,"neg10log10pVal"]>=100),]
 
-# rest k9 = 5227
-# ctrl k9 = 1467
-
+##get IDs
 r_k9 <- rest_h3k9ac[,"EnsemblID"]
 c_k9 <- ctrl_h3k9ac[,"EnsemblID"]
 
-shared <- intersect(r_k9, c_k9)
+r_h4 <- rest_h4ac[,"EnsemblID"]
+c_h4 <- ctrl_h4ac[,"EnsemblID"]
 
-# shared = 1138
+#shared?
+
+shared_k9 <- intersect(r_k9,c_k9)
+shared_h4 <- intersect(r_h4,c_h4)
+
+shared_r_k9 <- rest_h3k9ac[which(rest_h3k9ac[,"EnsemblID"] %in% c_k9),]
+shared_c_k9 <- ctrl_h3k9ac[which(rest_h3k9ac[,"EnsemblID"] %in% r_k9),]
+
+shared_r_h4 <- rest_h4ac[which(rest_h4ac[,"EnsemblID"] %in% c_h4),]
+shared_c_h4 <- ctrl_h4ac[which(rest_h4ac[,"EnsemblID"] %in% r_h4),]
+
+#unique?
+unique_r_k9 <- rest_h3k9ac[which(!(rest_h3k9ac[,"EnsemblID"] %in% c_k9)),]
+unique_c_k9 <- ctrl_h3k9ac[which(!(ctrl_h3k9ac[,"EnsemblID"] %in% r_k9)),]
+
+unique_r_h4 <- rest_h4ac[which(!(rest_h4ac[,"EnsemblID"] %in% c_h4)),]
+unique_c_h4 <- ctrl_h4ac[which(!(ctrl_h4ac[,"EnsemblID"] %in% r_h4)),]
 
 shared.df <- merge(ctrl_h3k9ac,rest_h3k9ac, by.x = "EnsemblID", by.y = "EnsemblID", suffixes = c("_ctrl","restko"))
 write.csv(shared.df,file = "H3K9ac_peaks_shared_between_ctrl_and_restko_ESCs.csv")
 
-
-
-unique_restko <- rest_h3k9ac[which(!(rest_h3k9ac[,"EnsemblID"] %in% c_k9)),]
-
-unique_cnt <- ctrl_h3k9ac[which(!(ctrl_h3k9ac[,"EnsemblID"] %in% r_k9)),]
-
-# unique rest ko  k9 = 4089
-# unique cnt k9 = 329
-
 #how many of these have REST binding sites??
 
-rest_sites <- read.csv(file="../results/REST_binding_sites.csv")
+rest <- read.csv(file="../../REST_ChIP/results/REST_D0_nearest_peak_to_gene_TSS.csv")
+rest <- rest[which(rest[,"neg10log10pVal"] >=100),]
+
+rest.ids <- rest[,"EnsemblID"]
+
+rest_shared_k9 <- intersect(rest.ids,shared_k9)
+rest_shared_h4 <- intersect(rest.ids,shared_h4)
+
+rest_unique_r_k9 <- intersect(rest.ids,unique_r_k9[,"EnsemblID"])
+rest_unique_c_k9 <- intersect(rest.ids,unique_c_k9[,"EnsemblID"])
+
+rest_unique_r_h4 <- intersect(rest.ids,unique_r_h4[,"EnsemblID"])
+rest_unique_c_h4 <- intersect(rest.ids,unique_c_h4[,"EnsemblID"])
+
+
+
+
 
 unique_binding_restko <- merge(unique_restko, rest_sites, by.x = "EnsemblID", by.y = "EnsemblID", all.x = TRUE, suffixes = c("_H3K9ac","_REST"))
 unique_binding_cnt <- merge(unique_cnt, rest_sites, by.x = "EnsemblID", by.y = "EnsemblID", all.x = TRUE, suffixes = c("_H3K9ac","_REST"))

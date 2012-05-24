@@ -1,0 +1,127 @@
+
+###take all genes, remove ones that arent expressed anywhere, filter on genes that cnage when KO REST
+###do dtw on individual genes and correlate with change in K9Ac/K4ac
+###then cluster these genes on chnages in expression and find enriched GO terms etc on that....
+
+options(stringsAsFactors = FALSE)
+
+library(limma)
+library(beadarray)
+library(hopach)
+library(Mfuzz)
+library(ggplot2)
+library(bioDist)
+library(dtw)
+library(reshape)
+library(biomaRt)
+
+##############raw data
+
+#take genes that change somewhere along the timecourse when KO Rest - adjPval < 0.05
+
+changed.REST <- read.csv(file = "xpn_timecourse/results/genes_changing_withwithout_REST_sig.csv")
+changed.TIME <- read.csv(file = "xpn_timecourse/results/genes_changing_across_timecourse_sig.csv")
+
+BSData <- get(load("xpn_timecourse/results/BSData.quantile.RData"))
+
+k9ac <- read.csv(file = "Ac_ChIP/results/H3K9ac_changes_DeSeq.csv")
+
+E <- exprs(BSData)
+
+####################
+
+#### take genes that are expressed somewhere and filter on genes that change when KO Rest
+
+#take uniquely changing REST genes
+changed.REST_o <- changed.REST[order(abs(changed.REST[,"logFC"]),decreasing = TRUE),]
+changed.REST_od <- changed.REST_o[which(!duplicated(changed.REST_o[,"EnsemblID"])),]
+changed.REST_od <- changed.REST_od[,c("ID","EnsemblID","logFC")]
+changed.REST_od <- changed.REST_od[which(!(is.na(changed.REST_od[,"EnsemblID"]))),]
+
+#check that are expressed somewhere
+##calculate averages
+
+D4.0 <- c(1,2,3,4)
+D4.1 <- c(5,6,7,8)
+D4.2 <- c(9,10,11,12)
+D4.4 <- c(13,14,15,16)
+C18.0 <- c(17,18,19)
+C18.1 <- c(20,21,22,23)
+C18.2 <- c(24,25,26,27)
+C18.4 <- c(28,29,30,31)
+
+aves <- apply(E, 1, function(x){
+        D4.0av <- sum(x[D4.0])/length(D4.0)
+        D4.1av <- sum(x[D4.1])/length(D4.1)
+        D4.2av <- sum(x[D4.2])/length(D4.2)
+        D4.4av <- sum(x[D4.4])/length(D4.4)
+        C18.0av <- sum(x[C18.0])/length(C18.0)
+        C18.1av <- sum(x[C18.1])/length(C18.1)
+        C18.2av <- sum(x[C18.2])/length(C18.2)
+        C18.4av <- sum(x[C18.4])/length(C18.4) 
+            return(c(D4.0av,D4.1av,D4.2av,D4.4av,C18.0av,C18.1av,C18.2av,C18.4av))
+        }
+)        
+
+aves <- t(aves)
+
+colnames(aves) <- c("D4_0","D4_1","D4_2","D4_4","C18_0","C18_1","C18_2","C18_4")
+
+#expressed above mean?
+avg <- mean(aves)
+
+E.fil <- aves[which(rowMeans(aves) >= avg),]
+
+#merge back to genes that are uniquely changing without REST
+
+unique_E <- merge(changed.REST_od, E.fil, by.x = "ID", by.y = "row.names")
+
+####then merge with DeSeq data to plot basic fold changes on acetylation and expression
+
+unique_k9ac <- k9ac[order(abs(k9ac[,"distancetoFeature"]),decreasing = TRUE),]
+unique_k9ac <- unique_k9ac[!duplicated(k9ac[,"EnsemblID"]),]
+
+unique_deseq <- merge(unique_E, k9ac, by.x = "EnsemblID", by.y = "EnsemblID")
+
+##quick plot - no at all pretty...
+plot(unique_deseq[,"logFC"],unique_deseq[,"logFC_DeSeq"])
+
+###need to perform DTW on each individual gene
+
+res <- matrix(nrow=nrow(unique_deseq), ncol = 1)
+for(i in 1:nrow(unique_deseq)){dtw_res <- dtw(unique_deseq[i,c("D4_0","D4_1","D4_2","D4_4")],unique_deseq[i,c("C18_0","C18_1","C18_2","C18_4")], keep = TRUE,step = rabinerJuangStepPattern(6,"c"))
+			      res[i,] <- dtw_res$distance
+			       if(rowMeans(unique_deseq[i,c("D4_0","D4_1","D4_2","D4_4")]) > rowMeans(unique_deseq[i,c("C18_0","C18_1","C18_2","C18_4")])){res[i,] <- (res[i,] * -1)}
+				}
+
+deseq_dtw <- cbind(unique_deseq,res)
+
+#tidy up
+colnames(deseq_dtw)[40] <- c("DTW")
+
+#plot again
+plot(deseq_dtw[,"logFC_DeSeq"],deseq_dtw[,"DTW"])
+
+##what about genes that are bound by REST?
+
+rchip <- read.csv(file = "REST_ChIP/results/REST_D0_nearest_peak_to_gene_TSS.csv")
+rchip <- rchip[which(rchip[,"neg10log10pVal"] >= 80),]
+rchip <- rchip[which(abs(rchip[,"distancetoFeature"]) <= 10000),]
+
+deseq_dtw_rest <- deseq_dtw[which(deseq_dtw[,"EnsemblID"] %in% rchip[,"EnsemblID"]),]
+plot(deseq_dtw[,"logFC_DeSeq"],deseq_dtw[,"DTW"],pch = 20)
+points(deseq_dtw_rest[,"logFC_DeSeq"],deseq_dtw_rest[,"DTW"], col = "red")
+
+
+##this isnt really working - try clustering on GO term function
+
+ensmart<- useMart("ensembl",dataset="mmusculus_gene_ensembl")
+results<- getBM(filters="ensembl_gene_id", values=deseq_dtw[,"EnsemblID"], attributes=c("ensembl_gene_id","go_id", "namespace_1003","name_1006"), mart=ensmart)
+
+
+
+
+
+
+
+
