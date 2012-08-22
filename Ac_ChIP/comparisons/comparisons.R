@@ -128,3 +128,48 @@ unique_binding_REST <- unique_binding[which(!is.na(unique_binding[,"Peak_REST"])
 foo <- unique_binding_REST[,c(1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,23,24,25,26,27,28,29,30,31,35,36,37,38)]
 
 write.csv(foo, file = "unique_RESTKO_H4ac_with_nearest_REST_site.csv")
+
+##plot width versus size w/wo REST
+#remove syt4 as its a weird peak
+ctrl_h3k9ac <- ctrl_h3k9ac[which(!(ctrl_h3k9ac[,"Symbol"] == "Syt4")),]
+rest_h3k9ac <- rest_h3k9ac[which(!(rest_h3k9ac[,"Symbol"] == "Syt4")),]
+
+par(mfrow=c(2,2))
+plot(ctrl_h3k9ac[,"Peak_width"],ctrl_h3k9ac[,"neg10log10pVal"],pch=20,xlim = c(0,40000),ylim=c(0,2750),xlab="Peak width",ylab="neg10log10pVal")
+plot(rest_h3k9ac[,"Peak_width"],rest_h3k9ac[,"neg10log10pVal"],pch=20,col = "red",xlim = c(0,40000),ylim=c(0,2750),xlab="Peak width",ylab="neg10log10pVal")
+
+plot(ctrl_h4ac[,"Peak_width"],ctrl_h4ac[,"neg10log10pVal"],pch=20,xlim = c(0,80000),ylim=c(0,1750),xlab="Peak width",ylab="neg10log10pVal")
+plot(rest_h4ac[,"Peak_width"],rest_h4ac[,"neg10log10pVal"],pch=20,col = "red",xlim = c(0,80000),ylim=c(0,1750),xlab="Peak width",ylab="neg10log10pVal")
+
+## overlay points for those bound by REST and/or cofactors
+
+rest <- read.csv(file="../../REST_ChIP/results/REST_D0_nearest_peak_to_gene_TSS.csv")
+rest <- rest[which(rest[,"neg10log10pVal"] >=100),]
+
+rest.ids <- rest[,"EnsemblID"]
+
+par(mfrow=c(2,2))
+plot(ctrl_h3k9ac[,"Peak_width"],ctrl_h3k9ac[,"neg10log10pVal"],pch=20,xlim = c(0,40000),ylim=c(0,2750),xlab="Peak width",ylab="neg10log10pVal")
+points(ctrl_h3k9ac[which(ctrl_h3k9ac[,"EnsemblID"] %in% rest.ids),"Peak_width"],ctrl_h3k9ac[which(ctrl_h3k9ac[,"EnsemblID"] %in% rest.ids),"neg10log10pVal"],col="blue")
+
+plot(rest_h3k9ac[,"Peak_width"],rest_h3k9ac[,"neg10log10pVal"],pch=20,col = "red",xlim = c(0,40000),ylim=c(0,2750),xlab="Peak width",ylab="neg10log10pVal")
+points(rest_h3k9ac[which(rest_h3k9ac[,"EnsemblID"] %in% rest.ids),"Peak_width"],rest_h3k9ac[which(rest_h3k9ac[,"EnsemblID"] %in% rest.ids),"neg10log10pVal"],col="blue")
+
+plot(ctrl_h4ac[,"Peak_width"],ctrl_h4ac[,"neg10log10pVal"],pch=20,xlim = c(0,80000),ylim=c(0,1750),xlab="Peak width",ylab="neg10log10pVal")
+points(ctrl_h4ac[which(ctrl_h4ac[,"EnsemblID"] %in% rest.ids),"Peak_width"],ctrl_h4ac[which(ctrl_h4ac[,"EnsemblID"] %in% rest.ids),"neg10log10pVal"],col="blue")
+
+plot(rest_h4ac[,"Peak_width"],rest_h4ac[,"neg10log10pVal"],pch=20,col = "red",xlim = c(0,80000),ylim=c(0,1750),xlab="Peak width",ylab="neg10log10pVal")
+points(rest_h4ac[which(rest_h4ac[,"EnsemblID"] %in% rest.ids),"Peak_width"],rest_h4ac[which(rest_h4ac[,"EnsemblID"] %in% rest.ids),"neg10log10pVal"],col="blue")
+
+
+
+
+
+
+
+
+
+
+
+
+
