@@ -373,16 +373,16 @@ matt.plot<-function (eset, cl, mfrow = c(1, 1), colo, min.mem = 0, time.labels, 
 }
 
 
-names <- c("D4_0","D4_1","D4_2","D4_4")
+names <- c("D4_0","D4_1","D4_2","D4_4","C18_0","C18_1","C18_2","C18_4")
 
 ##########mfuzz.plot - but draw my version called matt.plot
-postscript(file="results/Mfuzz/D4_mfuzzplots.ps", 
+postscript(file="results/Mfuzz/mfuzzplots.ps", 
 		paper="special",
 		width=14,
 		height=9, 
 		horizontal=FALSE)
 		par(las=2)
-	matt.plot(tmp_expr_D4,cl=cl_D4,
+	matt.plot(tmp_expr,cl=cl,
 	   mfrow=c(2,5),
 	   new.window = FALSE,
 	   time.labels=names,

@@ -1,0 +1,378 @@
+options(stringsAsFactors=FALSE)
+
+qw <- function(...) {
+  as.character(sys.call()[-1])
+}
+
+library(beadarray)
+library(limma)
+library(biomaRt)
+library(illuminaMousev2BeadID.db)
+library(illuminaMousev2.db)
+library(gplots)
+library(Mfuzz)
+library(hopach)
+
+
+		#load the data
+BSData <- get(load("results/BSData.quantile.RData"))
+E <- exprs(BSData)
+
+E <- E[,c(1:4,24:27,28:31,5:8,9:11,16:19,20:23,12:15)]
+
+design<-matrix(0,nrow=(ncol(E)), ncol=8)
+colnames(design) <- c("D4_0","D4_1","D4_2","D4_4","C18_0","C18_1","C18_2","C18_4")
+rownames(design) <- colnames(E)
+design[1:4,1] <- 1
+design[5:8,2] <- 1
+design[9:12,3] <- 1
+design[13:16,4] <- 1
+design[17:19,5] <- 1
+design[20:23,6] <- 1
+design[24:27,7] <- 1
+design[28:31,8] <- 1
+cont.matrix<-makeContrasts(day0=C18_0-D4_0,
+			   day1=C18_1-D4_1,
+                           day2=C18_2-D4_2,
+                           day4=C18_4-D4_4,
+                           levels=design)
+
+
+fit<-lmFit(E, design)
+fit<-contrasts.fit(fit, cont.matrix)
+ebFit<-eBayes(fit)
+
+ids = rownames(E)
+symbol <- mget(ids, illuminaMousev2BeadIDSYMBOL, ifnotfound = NA)
+sum(sapply(symbol, length) > 1)
+symbol <- as.character(symbol)
+length(which(symbol=="NA"))
+
+ensembl = mget(ids, illuminaMousev2BeadIDENSEMBL, ifnotfound = NA)
+length(which(is.na(ensembl)))
+
+sum(sapply(ensembl, length) > 1)
+crosshyb <- which(( sapply(ensembl, length) ) > 1) 
+length(crosshyb)
+ensembl[crosshyb] <- NA 
+ensembl <- as.character(ensembl)
+ensembl[ensembl=="NA"] = NA
+length(which(is.na(ensembl)))
+
+ensmart <- useMart("ensembl", dataset="mmusculus_gene_ensembl")
+
+
+filters <- "ensembl_gene_id"
+values <- ensembl[!is.na(ensembl)]
+attributes <- c("ensembl_gene_id", "chromosome_name","start_position", "end_position", "strand", "description")
+ens.anno <- getBM(filters=filters, values=values, attributes=attributes, mart=ensmart)
+rownames(ens.anno)<-ens.anno[,1]
+
+anno <- data.frame(
+                   ID = as.character(ids),
+                   EnsemblID = ensembl,
+                   symbol=symbol,
+                   ens.anno[ensembl,],
+                   stringsAsFactors=F
+              )
+rownames(anno) <- anno[,"ID"]
+
+ebFit$genes = anno 
+
+f.test<- topTable(ebFit, number=nrow(E))
+rownames(f.test)<-f.test$ID
+#f.test<-f.test[which(f.test[,"adj.P.Val"]<=0.005),]
+f.test<-f.test[order(f.test[,"adj.P.Val"],decreasing=FALSE),]
+write.csv(f.test,"results/f_test.csv",row.names=F)
+
+day0<-topTable(ebFit, coef=1, adjust="BH", number=nrow(E))
+rownames(day0)<-day0$ID
+#day0<-day0[which(day0[,"adj.P.Val"]<=0.005),]
+day0<-day0[order(day0[,"logFC"],decreasing=TRUE),]
+write.csv(day0,"results/day0.csv",row.names=F)
+
+day1<-topTable(ebFit, coef=2, adjust="BH", number=nrow(E))
+rownames(day1)<-day1$ID
+#day1<-day1[which(day1[,"adj.P.Val"]<=0.005),]
+day1<-day1[order(day1[,"logFC"],decreasing=TRUE),]
+write.csv(day1,"results/day1.csv",row.names=F)
+
+day2<-topTable(ebFit, coef=3, adjust="BH", number=nrow(E))
+rownames(day2)<-day2$ID
+#day2<-day2[which(day2[,"adj.P.Val"]<=0.005),]
+day2<-day2[order(day2[,"logFC"],decreasing=TRUE),]
+write.csv(day2,"results/day2.csv",row.names=F)
+
+day4<-topTable(ebFit, coef=4, adjust="BH", number=nrow(E))
+rownames(day4)<-day4$ID
+#day4<-day4[which(day4[,"adj.P.Val"]<=0.005),]
+day4<-day4[order(day4[,"logFC"],decreasing=TRUE),]
+write.csv(day4,"results/day4.csv",row.names=F)
+
+
+############do something shiny....
+
+####graph biggest changes at each age - like in that Geschwind paper...
+
+#get up/down regulated genes
+
+day0_sig <- day0[which(day0[,"adj.P.Val"] <= 0.005),]
+day0_sig.o <- day0_sig[order(abs(day0_sig[,"logFC"]),decreasing = TRUE),]
+day0_sig.od <- day0_sig.o[!duplicated(day0_sig.o[,"EnsemblID"]),c("ID","EnsemblID","logFC")]
+
+day1_sig <- day1[which(day1[,"adj.P.Val"] <= 0.005),]
+day1_sig.o <- day1_sig[order(abs(day1_sig[,"logFC"]),decreasing = TRUE),]
+day1_sig.od <- day1_sig.o[!duplicated(day1_sig.o[,"EnsemblID"]),c("ID","EnsemblID","logFC")]
+
+day2_sig <- day2[which(day2[,"adj.P.Val"] <= 0.005),]
+day2_sig.o <- day2_sig[order(abs(day2_sig[,"logFC"]),decreasing = TRUE),]
+day2_sig.od <- day2_sig.o[!duplicated(day2_sig.o[,"EnsemblID"]),c("ID","EnsemblID","logFC")]
+
+day4_sig <- day4[which(day4[,"adj.P.Val"] <= 0.005),]
+day4_sig.o <- day4_sig[order(abs(day4_sig[,"logFC"]),decreasing = TRUE),]
+day4_sig.od <- day4_sig.o[!duplicated(day4_sig.o[,"EnsemblID"]),c("ID","EnsemblID","logFC")]
+
+day0_up <- day0_sig.od[which(day0_sig.od[,"logFC"] >= 1),c("ID","EnsemblID")]
+day0_down <- day0_sig.od[which(day0_sig.od[,"logFC"] <= -1),c("ID","EnsemblID")]
+
+day1_up <- day1_sig.od[which(day1_sig.od[,"logFC"] >= 1),c("ID","EnsemblID")]
+day1_down <- day1_sig.od[which(day1_sig.od[,"logFC"] <= -1),c("ID","EnsemblID")]
+
+day2_up <- day2_sig.od[which(day2_sig.od[,"logFC"] >= 1),c("ID","EnsemblID")]
+day2_down <- day2_sig.od[which(day2_sig.od[,"logFC"] <= -1),c("ID","EnsemblID")]
+
+day4_up <- day4_sig.od[which(day4_sig.od[,"logFC"] >= 1),c("ID","EnsemblID")]
+day4_down <- day4_sig.od[which(day4_sig.od[,"logFC"] <= -1),c("ID","EnsemblID")]
+
+###make list for comparison across timepoints
+
+changing_REST <- rbind(day0_sig.od,day1_sig.od,day2_sig.od,day4_sig.od)
+changing_REST.o <- changing_REST[order(abs(changing_REST[,"logFC"]), decreasing = TRUE),]
+changing_REST.od <- changing_REST[!duplicated(changing_REST[,"EnsemblID"]),]
+
+write.csv(changing_REST.od,file = "results/genes_changing_withwithout_REST_sig.csv")
+
+#take unique changed genes and get from E
+
+#reload all data and keep mutant aswell...
+BSData <- get(load("results/BSData.quantile.RData"))
+E <- exprs(BSData)
+E <- E[,c(1:4,24:27,28:31,5:8,9:11,16:19,20:23,12:15)]
+
+changeE <- merge(E, changing_REST.od, by.x = "row.names", by.y = "ID")
+
+# remove any NAs
+
+changeE <- changeE[!is.na(changeE[,"EnsemblID"]),]
+rownames(changeE) <- changeE[,"EnsemblID"]
+
+#take off ids columns
+
+Exp <- changeE[,2:32]
+
+##calculate averages
+
+D4.0 <- c(1,2,3,4)
+D4.1 <- c(5,6,7,8)
+D4.2 <- c(9,10,11,12)
+D4.4 <- c(13,14,15,16)
+C18.0 <- c(17,18,19)
+C18.1 <- c(20,21,22,23)
+C18.2 <- c(24,25,26,27)
+C18.4 <- c(28,29,30,31)
+
+aves <- apply(Exp, 1, function(x){
+        D4.0av <- sum(x[D4.0])/length(D4.0)
+        D4.1av <- sum(x[D4.1])/length(D4.1)
+        D4.2av <- sum(x[D4.2])/length(D4.2)
+        D4.4av <- sum(x[D4.4])/length(D4.4)
+        C18.0av <- sum(x[C18.0])/length(C18.0)
+        C18.1av <- sum(x[C18.1])/length(C18.1)
+        C18.2av <- sum(x[C18.2])/length(C18.2)
+        C18.4av <- sum(x[C18.4])/length(C18.4) 
+            return(c(D4.0av,D4.1av,D4.2av,D4.4av,C18.0av,C18.1av,C18.2av,C18.4av))
+        }
+)        
+
+aves <- t(aves)
+
+colnames(aves) <- c("D4_0","D4_1","D4_2","D4_4","C18_0","C18_1","C18_2","C18_4")
+
+aves_D4 <- aves[,1:4]
+aves_C18 <- aves[,5:8]
+
+save(Exp, file = "results/Exp_changing.RData")
+
+#compute the distance matrix first - try cosangle or euclid
+gene.dist <- distancematrix(aves, "euclid")
+
+#now run hopach. K score relates to the level pf the dendrogram at which to call the clusters
+gene.hopach <- hopach(aves, dmat=gene.dist, d="euclid",K=1)
+
+#plot distance matrix
+postscript(file="results/distancematrix.ps", horizontal=FALSE)
+dplot(gene.dist, 
+	gene.hopach, 
+	ord = "cluster", 
+	main = "ESC Timecourse", 
+	showclusters = TRUE)
+dev.off()
+
+clusters <- gene.hopach$clust$k
+# 9 clusters
+
+#run Mfuzz to plot clusters
+tmp_expr = new('ExpressionSet', exprs=aves)
+cl = mfuzz(tmp_expr, c=9,m=3)
+
+core <- acore(tmp_expr, cl, min.acore=0.5)
+
+#link back to f.test for wt D0vs4
+
+annotate.cluster <- function(core.num){
+   this.core <- core[[core.num]]
+
+   #find rows from f.test that are in each cluster 
+   dat.core <- f.test[rownames(this.core),]
+
+   #make a dataframe to combine the cluster gene info from limma f_test results and core membership score for each cluster
+   cluster <- data.frame(dat.core, this.core[,2])
+
+   #rename membership column to membership
+   colnames(cluster)[18] <- "Membership"
+
+   #order by membership score
+   cluster <- cluster[order(cluster[,"Membership"],decreasing=TRUE),]
+
+   #save it as a csv file named by the cluster number
+   write.csv(cluster, paste("results/Mfuzz/clusters_",core.num,".csv",sep=""))
+}
+
+
+for(i in 1:length(core)){
+  annotate.cluster(i)
+}
+
+
+matt.plot<-function (eset, cl, mfrow = c(1, 1), colo, min.mem = 0, time.labels, new.window = TRUE, ymin=-999, ymax=-999, xlab="Time", ylab="Expression Changes")
+{
+    clusterindex <- cl[[3]]
+    memship <- cl[[4]]
+    memship[memship < min.mem] <- -1
+    colorindex <- integer(dim(exprs(eset))[[1]])
+    if (missing(colo)) {
+        colo <- c("#FF8F00", "#FFA700", "#FFBF00", "#FFD700",
+            "#FFEF00", "#F7FF00", "#DFFF00", "#C7FF00", "#AFFF00",
+            "#97FF00", "#80FF00", "#68FF00", "#50FF00", "#38FF00",
+            "#20FF00", "#08FF00", "#00FF10", "#00FF28", "#00FF40",
+            "#00FF58", "#00FF70", "#00FF87", "#00FF9F", "#00FFB7",
+            "#00FFCF", "#00FFE7", "#00FFFF", "#00E7FF", "#00CFFF",
+            "#00B7FF", "#009FFF", "#0087FF", "#0070FF", "#0058FF",
+            "#0040FF", "#0028FF", "#0010FF", "#0800FF", "#2000FF",
+            "#3800FF", "#5000FF", "#6800FF", "#8000FF", "#9700FF",
+            "#AF00FF", "#C700FF", "#DF00FF", "#F700FF", "#FF00EF",
+            "#FF00D7", "#FF00BF", "#FF00A7", "#FF008F", "#FF0078",
+            "#FF0060", "#FF0048", "#FF0030", "#FF0018")
+    }
+    colorseq <- seq(0, 1, length = length(colo))
+    for (j in 1:max(clusterindex)) {
+        tmp <- exprs(eset)[clusterindex == j, ]
+        tmpmem <- memship[clusterindex == j, j]
+        if (((j - 1)%%(mfrow[1] * mfrow[2])) == 0) {
+            if (new.window)
+                X11()
+            par(mfrow = mfrow)
+ 
+            if (sum(clusterindex == j) == 0) {
+                if(ymin == -999){ymin <- -1}
+                if(ymax == -999) {ymax <- +1}
+            }
+            else {
+                if(ymin == -999) {ymin <- min(tmp)}
+                if(ymax == -999) {ymax <- max(tmp)}
+            }
+            plot.default(x = NA, xlim = c(1, dim(exprs(eset))[[2]]),
+                ylim = c(ymin, ymax), xlab = xlab, ylab = ylab,
+                main = paste("Cluster", j), axes = FALSE)
+            if (missing(time.labels)) {
+                axis(1, 1:dim(exprs(eset))[[2]], c(1:dim(exprs(eset))[[2]]))
+                axis(2)
+            }
+           else {
+                axis(1, 1:dim(exprs(eset))[[2]], time.labels)
+                axis(2)
+            }
+        }
+        else {
+            if (sum(clusterindex == j) == 0) {
+                if(ymin == -999){ymin <- -1}
+                if(ymax == -999) {ymax <- +1}
+            }
+            else {
+                if(ymin == -999) {ymin <- min(tmp)}
+                if(ymax == -999) {ymax <- max(tmp)}
+            }
+            plot.default(x = NA, xlim = c(1, dim(exprs(eset))[[2]]),
+                ylim = c(ymin, ymax), xlab = xlab, ylab = ylab,
+                main = paste("Cluster", j), axes = FALSE)
+            if (missing(time.labels)) {
+                axis(1, 1:dim(exprs(eset))[[2]], c(1:dim(exprs(eset))[[2]]))
+                axis(2)
+            }
+            else {
+                axis(1, 1:dim(exprs(eset))[[2]], time.labels)
+                axis(2)
+            }
+        }
+        if (!(sum(clusterindex == j) == 0)) {
+            for (jj in 1:(length(colorseq) - 1)) {
+                tmpcol <- (tmpmem >= colorseq[jj] & tmpmem <=
+                  colorseq[jj + 1])
+                if (sum(tmpcol) > 0) {
+                  tmpind <- which(tmpcol)
+                  for (k in 1:length(tmpind)) {
+                    lines(tmp[tmpind[k], ], col = colo[jj])
+                  }
+                }
+            }
+        }
+    }
+}
+
+
+names <- c("D4_0","D4_1","D4_2","D4_4","C18_0","C18_1","C18_2","C18_4")
+
+##########mfuzz.plot - but draw my version called matt.plot
+postscript(file="results/Mfuzz/mfuzzplots.ps", 
+		paper="special",
+		width=14,
+		height=9, 
+		horizontal=FALSE)
+		par(las=2)
+	matt.plot(tmp_expr,cl=cl,
+	   mfrow=c(2,5),
+	   new.window = FALSE,
+	   time.labels=names,
+	   min.mem=0.5,
+          ymin = 6,
+         ymax = 14,
+           xlab = ""
+                )
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
